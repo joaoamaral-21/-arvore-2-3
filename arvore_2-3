@@ -2,12 +2,12 @@
 #include <stdlib.h>
 
 typedef struct No {
-    int n;                  // número de chaves (1 ou 2)
+    int n;
     int chave[2];
     struct No *filho[3];
 } No;
 
-/* ===================== UTILITÁRIOS ===================== */
+/* ===================== CRIAÇÃO ===================== */
 
 No* criaNo(int chave, No* esq, No* dir) {
     No* novo = (No*)malloc(sizeof(No));
@@ -54,7 +54,7 @@ No* insereRec(No* no, int valor, int* cresceu, int* promovido, No** novoFilho) {
     else if (no->n == 1 || valor < no->chave[1]) pos = 1;
     else pos = 2;
 
-    No* filhoRet = insereRec(no->filho[pos], valor, cresceu, promovido, novoFilho);
+    no->filho[pos] = insereRec(no->filho[pos], valor, cresceu, promovido, novoFilho);
 
     if (!(*cresceu)) return no;
 
@@ -73,36 +73,36 @@ No* insereRec(No* no, int valor, int* cresceu, int* promovido, No** novoFilho) {
         return no;
     }
 
-    int chaves[3];
-    No* filhos[4];
+    int ch[3];
+    No* f[4];
 
-    chaves[0] = no->chave[0];
-    chaves[1] = no->chave[1];
-    chaves[2] = *promovido;
+    ch[0] = no->chave[0];
+    ch[1] = no->chave[1];
+    ch[2] = *promovido;
 
-    filhos[0] = no->filho[0];
-    filhos[1] = no->filho[1];
-    filhos[2] = no->filho[2];
-    filhos[3] = *novoFilho;
+    f[0] = no->filho[0];
+    f[1] = no->filho[1];
+    f[2] = no->filho[2];
+    f[3] = *novoFilho;
 
     for (int i = 2; i > pos; i--) {
-        chaves[i] = chaves[i - 1];
-        filhos[i + 1] = filhos[i];
+        ch[i] = ch[i - 1];
+        f[i + 1] = f[i];
     }
-    chaves[pos] = *promovido;
-    filhos[pos + 1] = *novoFilho;
+    ch[pos] = *promovido;
+    f[pos + 1] = *novoFilho;
 
-    *promovido = chaves[1];
+    *promovido = ch[1];
 
-    No* direito = criaNo(chaves[2], filhos[2], filhos[3]);
+    No* dir = criaNo(ch[2], f[2], f[3]);
 
     no->n = 1;
-    no->chave[0] = chaves[0];
-    no->filho[0] = filhos[0];
-    no->filho[1] = filhos[1];
+    no->chave[0] = ch[0];
+    no->filho[0] = f[0];
+    no->filho[1] = f[1];
     no->filho[2] = NULL;
 
-    *novoFilho = direito;
+    *novoFilho = dir;
     return no;
 }
 
@@ -112,28 +112,116 @@ No* insere(No* raiz, int valor) {
 
     raiz = insereRec(raiz, valor, &cresceu, &promovido, &novoFilho);
 
-    if (cresceu) {
+    if (cresceu)
         return criaNo(promovido, raiz, novoFilho);
+
+    return raiz;
+}
+
+/* ===================== REMOÇÃO ===================== */
+
+void corrigeUnderflow(No** pai, int pos) {
+    No* no = (*pai)->filho[pos];
+
+    if (pos > 0 && (*pai)->filho[pos - 1]->n == 2) {
+        No* irmao = (*pai)->filho[pos - 1];
+
+        for (int i = no->n; i > 0; i--)
+            no->chave[i] = no->chave[i - 1];
+
+        no->chave[0] = (*pai)->chave[pos - 1];
+        (*pai)->chave[pos - 1] = irmao->chave[irmao->n - 1];
+
+        no->n++;
+        irmao->n--;
+        return;
+    }
+
+    if (pos < (*pai)->n && (*pai)->filho[pos + 1]->n == 2) {
+        No* irmao = (*pai)->filho[pos + 1];
+
+        no->chave[no->n++] = (*pai)->chave[pos];
+        (*pai)->chave[pos] = irmao->chave[0];
+
+        irmao->chave[0] = irmao->chave[1];
+        irmao->n--;
+        return;
+    }
+
+    int mergePos = (pos > 0) ? pos - 1 : pos;
+    No* esq = (*pai)->filho[mergePos];
+    No* dir = (*pai)->filho[mergePos + 1];
+
+    esq->chave[esq->n++] = (*pai)->chave[mergePos];
+    esq->chave[esq->n++] = dir->chave[0];
+
+    (*pai)->n--;
+    free(dir);
+}
+
+int removeRec(No** raiz, int valor) {
+    if (!*raiz) return 0;
+
+    No* no = *raiz;
+    int pos;
+
+    if (valor == no->chave[0]) pos = 0;
+    else if (no->n == 2 && valor == no->chave[1]) pos = 1;
+    else {
+        if (valor < no->chave[0]) pos = 0;
+        else if (no->n == 1 || valor < no->chave[1]) pos = 1;
+        else pos = 2;
+
+        removeRec(&no->filho[pos], valor);
+        if (no->filho[pos] && no->filho[pos]->n == 0)
+            corrigeUnderflow(raiz, pos);
+        return 1;
+    }
+
+    if (!ehFolha(no)) {
+        No* aux = no->filho[pos + 1];
+        while (!ehFolha(aux))
+            aux = aux->filho[0];
+
+        no->chave[pos] = aux->chave[0];
+        removeRec(&no->filho[pos + 1], aux->chave[0]);
+        if (no->filho[pos + 1]->n == 0)
+            corrigeUnderflow(raiz, pos + 1);
+        return 1;
+    }
+
+    for (int i = pos; i < no->n - 1; i++)
+        no->chave[i] = no->chave[i + 1];
+
+    no->n--;
+    return 1;
+}
+
+No* removeValor(No* raiz, int valor) {
+    removeRec(&raiz, valor);
+
+    if (raiz && raiz->n == 0) {
+        No* nova = raiz->filho[0];
+        free(raiz);
+        return nova;
     }
     return raiz;
 }
 
-/* ===================== EM ORDEM ===================== */
+/* ===================== EXIBIÇÃO ===================== */
 
 void emOrdem(No* raiz) {
     if (!raiz) return;
-
     emOrdem(raiz->filho[0]);
     printf("%d ", raiz->chave[0]);
     emOrdem(raiz->filho[1]);
-
     if (raiz->n == 2) {
         printf("%d ", raiz->chave[1]);
         emOrdem(raiz->filho[2]);
     }
 }
 
-/* ===================== IMPRESSÃO POR NÍVEL ===================== */
+/* ===== EXIBIÇÃO POR NÍVEL ===== */
 
 typedef struct Fila {
     No* no;
@@ -144,14 +232,12 @@ void enfileira(Fila** ini, Fila** fim, No* no) {
     Fila* novo = (Fila*)malloc(sizeof(Fila));
     novo->no = no;
     novo->prox = NULL;
-
     if (*fim) (*fim)->prox = novo;
     else *ini = novo;
     *fim = novo;
 }
 
 No* desenfileira(Fila** ini, Fila** fim) {
-    if (!*ini) return NULL;
     Fila* temp = *ini;
     No* no = temp->no;
     *ini = temp->prox;
@@ -174,57 +260,39 @@ void imprimePorNivel(No* raiz) {
         else
             printf("[%d,%d] ", atual->chave[0], atual->chave[1]);
 
-        for (int i = 0; i <= atual->n; i++) {
+        for (int i = 0; i <= atual->n; i++)
             if (atual->filho[i])
                 enfileira(&ini, &fim, atual->filho[i]);
-        }
     }
+    printf("\n");
 }
 
 /* ===================== MENU ===================== */
 
 int main() {
     No* raiz = NULL;
-    int opcao, valor;
+    int op, v;
 
     do {
-        printf("\n\n===== Árvore 2-3 =====");
-        printf("\n1 - Inserir");
-        printf("\n2 - Buscar");
-        printf("\n3 - Exibir em Ordem");
-        printf("\n4 - Exibir por Nível");
-        printf("\n0 - Sair");
-        printf("\nEscolha: ");
-        scanf("%d", &opcao);
+        printf("\n1 Inserir\n2 Remover\n3 Buscar\n4 Em Ordem\n5 Por Nivel\n0 Sair\n");
+        scanf("%d", &op);
 
-        switch (opcao) {
-            case 1:
-                printf("Valor: ");
-                scanf("%d", &valor);
-                raiz = insere(raiz, valor);
-                break;
-
-            case 2:
-                printf("Valor: ");
-                scanf("%d", &valor);
-                if (busca(raiz, valor))
-                    printf("Encontrado!\n");
-                else
-                    printf("Não encontrado.\n");
-                break;
-
-            case 3:
-                emOrdem(raiz);
-                printf("\n");
-                break;
-
-            case 4:
-                imprimePorNivel(raiz);
-                printf("\n");
-                break;
+        if (op == 1) {
+            scanf("%d", &v);
+            raiz = insere(raiz, v);
+        } else if (op == 2) {
+            scanf("%d", &v);
+            raiz = removeValor(raiz, v);
+        } else if (op == 3) {
+            scanf("%d", &v);
+            printf(busca(raiz, v) ? "Encontrado\n" : "Nao encontrado\n");
+        } else if (op == 4) {
+            emOrdem(raiz);
+            printf("\n");
+        } else if (op == 5) {
+            imprimePorNivel(raiz);
         }
-
-    } while (opcao != 0);
+    } while (op != 0);
 
     return 0;
 }
